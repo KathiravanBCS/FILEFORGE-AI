@@ -1,0 +1,35 @@
+{
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "name": "@fileforge/database",
+  "scripts": {
+    "build": "tsx scripts/generate-client.ts && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "generate": "tsx scripts/generate-client.ts",
+    "migrate": "prisma migrate dev",
+    "deploy": "prisma migrate deploy",
+    "seed": "tsx --env-file-if-exists=../../.env prisma/seed.ts",
+    "generate:cli": "prisma generate"
+  },
+  "dependencies": {
+    "@fileforge/shared": "workspace:*",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "better-auth": "1.7.12",
+    "dotenv": "18.0.8",
+    "pg": "8.23.1",
+    "resend": "6.34.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@prisma/client-generator-ts": "7.10.1",
+    "@prisma/internals": "7.10.1",
+    "@types/node": "24.10.0",
+    "@types/pg": "8.23.1",
+    "prisma": "7.10.1"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

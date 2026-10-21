@@ -1,0 +1,40 @@
+{
+  "name": "fileforge-ai",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "db:generate": "pnpm --filter @fileforge/database generate",
+    "db:migrate": "pnpm --filter @fileforge/database migrate",
+    "db:deploy": "pnpm --filter @fileforge/database deploy",
+    "db:seed": "pnpm --filter @fileforge/database seed",
+    "check:providers": "node --env-file-if-exists=.env --use-env-proxy --import tsx scripts/check-providers.ts",
+    "env:check": "node --env-file-if-exists=.env --import tsx scripts/validate-env.ts",
+    "env:init": "tsx scripts/init-local-env.ts"
+  },
+  "devDependencies": {
+    "turbo": "2.11.9",
+    "typescript": "5.9.3",
+    "tsx": "4.23.15",
+    "tsup": "9.0.0",
+    "eslint": "10.13.0",
+    "typescript-eslint": "8.72.0",
+    "prettier": "3.9.10",
+    "@playwright/test": "1.64.1",
+    "vitest": "5.0.5",
+    "@types/node": "24.10.0",
+    "concurrently": "10.0.6",
+    "dotenv": "18.0.8"
+  }
+}

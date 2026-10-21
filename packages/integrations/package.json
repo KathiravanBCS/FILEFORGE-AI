@@ -1,0 +1,28 @@
+{
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "name": "@fileforge/integrations",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1153.0",
+    "@aws-sdk/s3-request-presigner": "3.1153.0",
+    "bullmq": "6.3.19",
+    "ioredis": "6.0.0",
+    "groq-sdk": "1.6.0",
+    "exceljs": "4.4.0",
+    "file-type": "22.2.0",
+    "pino": "10.4.0",
+    "zod": "4.6.7",
+    "@fileforge/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

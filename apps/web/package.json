@@ -1,0 +1,37 @@
+{
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "name": "@fileforge/web",
+  "scripts": {
+    "dev": "node ../../scripts/run-next.mjs dev --webpack --hostname 0.0.0.0",
+    "build": "node ../../scripts/run-next.mjs build --webpack",
+    "start": "node ../../scripts/run-next.mjs start --hostname 0.0.0.0",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "@mantine/core": "9.7.3",
+    "@mantine/hooks": "9.7.3",
+    "@mantine/form": "9.7.3",
+    "@mantine/notifications": "9.7.3",
+    "@mantine/dropzone": "9.7.3",
+    "@tabler/icons-react": "3.49.0",
+    "@tanstack/react-query": "5.104.5",
+    "@tanstack/react-table": "8.21.3",
+    "zustand": "5.0.15",
+    "echarts": "6.1.0",
+    "better-auth": "1.7.12",
+    "zod": "4.6.7",
+    "@fileforge/shared": "workspace:*",
+    "@fileforge/database": "workspace:*",
+    "@fileforge/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  }
+}

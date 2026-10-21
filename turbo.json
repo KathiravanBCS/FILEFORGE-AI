@@ -1,0 +1,79 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": [
+        "DATABASE_URL",
+        "BETTER_AUTH_SECRET",
+        "BETTER_AUTH_URL",
+        "NEXT_PUBLIC_APP_URL",
+        "NEXT_PUBLIC_API_URL"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@fileforge/shared#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@fileforge/integrations#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@fileforge/ui#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@fileforge/database#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["src/generated/**"]
+    },
+    "@fileforge/database#typecheck": {
+      "dependsOn": ["@fileforge/database#build"]
+    }
+  },
+  "globalPassThroughEnv": [
+    "NODE_ENV",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "NODE_USE_ENV_PROXY",
+    "DATABASE_URL",
+    "DIRECT_URL",
+    "BETTER_AUTH_URL",
+    "BETTER_AUTH_SECRET",
+    "NEXT_PUBLIC_APP_URL",
+    "NEXT_PUBLIC_API_URL",
+    "API_PORT",
+    "STORAGE_PROVIDER",
+    "S3_BUCKET",
+    "S3_REGION",
+    "S3_ENDPOINT",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "REDIS_URL",
+    "WORKER_CONCURRENCY",
+    "FILE_RETENTION_DAYS",
+    "GROQ_API_KEY",
+    "GROQ_VISION_MODEL",
+    "GROQ_TEXT_MODEL",
+    "GROQ_INPUT_USD_PER_MILLION",
+    "GROQ_OUTPUT_USD_PER_MILLION",
+    "RESEND_API_KEY",
+    "EMAIL_FROM",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "MICROSOFT_CLIENT_ID",
+    "MICROSOFT_CLIENT_SECRET"
+  ]
+}
