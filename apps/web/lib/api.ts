@@ -15,8 +15,15 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (workspace) headers.set('x-workspace-id', workspace);
   if (options.body && !(options.body instanceof FormData))
     headers.set('Content-Type', 'application/json');
-  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-  const res = await fetch(`${base}${path}`, { ...options, headers, credentials: 'include' });
+  const segments = path.split('?')[0]!.slice(1).split('/');
+  if (
+    !path.startsWith('/') ||
+    !segments.every((segment) => /^[A-Za-z0-9_-]+$/.test(segment)) ||
+    path.includes('#')
+  ) {
+    throw new Error('API requests must use a relative workspace path.');
+  }
+  const res = await fetch(`/api/v1${path}`, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { message?: string | string[] };
     throw new ApiError(

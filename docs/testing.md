@@ -27,6 +27,12 @@ On this cloud machine, use `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromiu
 
 This acceptance procedure remains outstanding until the managed services are reachable. It is not reported as passed by mocked tests.
 
+## Dependency audit scope
+
+Run `pnpm audit --prod` for deployed runtime dependencies and `pnpm audit` for the full workspace. The Vercel CLI runs as an external pinned tool through `pnpm dlx`, avoiding an all-framework deployment toolchain in the application dependency tree; audit that tool separately when selecting/upgrading its version. CLI 65.0.0 reported advisories in its transitive build tooling during this review and is not described as vulnerability-free.
+
+The full workspace audit currently reports [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) in development-only `braces@3.0.3`, used by Prisma's official code generator through glob tooling. No patched release is listed. These build globs are repository-controlled and do not process application uploads. Track the upstream fix; do not accept untrusted build patterns or suppress the finding as proof of security.
+
 ## Current cloud networking
 
 Runtime checks observed `EAI_AGAIN` resolving the Neon hosts, Redis TLS connection failures, and rejected R2/Groq requests. Credentials were inspected for presence only and were never written into source or logs. The configured Groq model's availability has not been confirmed; the implementation fails explicitly rather than selecting a substitute.

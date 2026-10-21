@@ -13,6 +13,7 @@ import {
   Query,
   Req,
   ServiceUnavailableException,
+  PayloadTooLargeException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -41,20 +42,12 @@ import {
 } from '@fileforge/integrations';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { basename } from 'node:path';
 import type { AuthenticatedRequest } from '../common/context.js';
 import { SessionGuard, WorkspaceGuard, assertManage, assertWrite } from '../guards/auth.js';
 import { found, parse } from '../common/validation.js';
+import { publicFileFields, fileRetentionExpiry, uploadName } from '../common/files.js';
 
 const contactRelations = { emails: true, phones: true, socialLinks: true } as const;
-const publicFileFields = {
-  id: true,
-  originalName: true,
-  mimeType: true,
-  size: true,
-  status: true,
-  createdAt: true,
-} as const;
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -261,7 +254,7 @@ export class WorkspaceController {
       recentActivity,
       usage,
     ] = await Promise.all([
-      db.file.count({ where: { organizationId, deletedAt: null } }),
+      db.file.count({ where: { organizationId, deletedAt: null, status: 'uploaded' } }),
       db.businessCardScan.count({ where: { organizationId } }),
       db.contact.count({ where: { organizationId, deletedAt: null } }),
       db.processingJob.count({
@@ -491,6 +484,10 @@ export class WorkspaceController {
     @UploadedFile() file?: { buffer: Buffer; originalname: string },
   ) {
     assertWrite(request);
+    if (process.env.VERCEL === '1')
+      throw new PayloadTooLargeException(
+        'Use direct R2 upload initialization and completion on this deployment.',
+      );
     if (!file?.buffer) throw new BadRequestException('Choose an image to upload.');
     let image;
     try {
@@ -504,10 +501,7 @@ export class WorkspaceController {
       fileId: id,
       extension: image.extension,
     });
-    const originalName =
-      basename(file.originalname)
-        .replace(/[\x00-\x1f\x7f]/g, '')
-        .slice(0, 200) || `business-card.${image.extension}`;
+    const originalName = uploadName(file.originalname, image.extension);
     const storage = R2Storage.fromEnvironment();
     try {
       await storage.put({ key, body: file.buffer, contentType: image.mimeType });
@@ -527,16 +521,7 @@ export class WorkspaceController {
             objectKey: key,
             mimeType: image.mimeType,
             size: image.size,
-            expiresAt: new Date(
-              Date.now() +
-                z.coerce
-                  .number()
-                  .int()
-                  .min(1)
-                  .max(3650)
-                  .parse(process.env.FILE_RETENTION_DAYS ?? 30) *
-                  86400_000,
-            ),
+            expiresAt: fileRetentionExpiry(),
           },
           select: publicFileFields,
         });
@@ -578,7 +563,7 @@ export class WorkspaceController {
   async fileDownload(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     const file = found(
       await getDatabase().file.findFirst({
-        where: { id, organizationId: request.workspace.id, deletedAt: null },
+        where: { id, organizationId: request.workspace.id, deletedAt: null, status: 'uploaded' },
       }),
     );
     if (file.expiresAt && file.expiresAt <= new Date())

@@ -37,16 +37,92 @@ const redisUrl = z.string().refine((value) => {
   }
 }, 'Use an Upstash Redis protocol connection; the adapter always enforces TLS.');
 
+/** An explicit canonical origin prevents request headers from changing auth trust. */
+const applicationOrigin = z.string().transform((value, context) => {
+  try {
+    const url = new URL(value);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.hostname.includes('*') ||
+      url.pathname !== '/' ||
+      url.search ||
+      url.hash
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Use an HTTP(S) origin without wildcards, credentials, path, query, or fragment.',
+      });
+      return z.NEVER;
+    }
+    return url.origin;
+  } catch {
+    context.addIssue({ code: 'custom', message: 'Use a valid HTTP(S) application origin.' });
+    return z.NEVER;
+  }
+});
+const optionalApplicationOrigin = z.preprocess(
+  (value) => (typeof value === 'string' && !value.trim() ? undefined : value),
+  applicationOrigin.optional(),
+);
+export const applicationOriginsSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    BETTER_AUTH_URL: optionalApplicationOrigin,
+    NEXT_PUBLIC_APP_URL: optionalApplicationOrigin,
+  })
+  .superRefine((value, context) => {
+    if (value.NODE_ENV === 'production') {
+      for (const field of ['BETTER_AUTH_URL', 'NEXT_PUBLIC_APP_URL'] as const) {
+        if (!value[field] || !value[field].startsWith('https://')) {
+          context.addIssue({
+            code: 'custom',
+            path: [field],
+            message: 'Configure an explicit HTTPS canonical origin for this deployment.',
+          });
+        }
+      }
+    }
+    if (
+      value.BETTER_AUTH_URL &&
+      value.NEXT_PUBLIC_APP_URL &&
+      value.BETTER_AUTH_URL !== value.NEXT_PUBLIC_APP_URL
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['NEXT_PUBLIC_APP_URL'],
+        message: 'The web application and authentication canonical origins must match.',
+      });
+    }
+  })
+  .transform((value) => {
+    const origin = value.BETTER_AUTH_URL || value.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    return { authUrl: origin, appUrl: origin, origin };
+  });
+
+export function resolveApplicationOrigins(
+  input: Record<string, string | undefined>,
+): z.infer<typeof applicationOriginsSchema> {
+  const result = applicationOriginsSchema.safeParse(input);
+  if (!result.success) {
+    const fields = [...new Set(result.error.issues.map((issue) => issue.path.join('.')))];
+    throw new Error(
+      `Invalid application origin configuration: ${fields.join(', ')}. Configure the canonical origins for this deployment.`,
+    );
+  }
+  return result.data;
+}
+
 /** Pass server process variables explicitly. Never serialize this result to the browser. */
 export const serverEnvironmentSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     DATABASE_URL: neonUrl,
     DIRECT_URL: neonUrl.optional(),
-    BETTER_AUTH_URL: z.url().default('http://localhost:3000'),
+    BETTER_AUTH_URL: optionalApplicationOrigin,
     BETTER_AUTH_SECRET: z.string().min(32),
-    NEXT_PUBLIC_APP_URL: z.url().default('http://localhost:3000'),
-    NEXT_PUBLIC_API_URL: z.url().default('http://localhost:4000/api/v1'),
+    NEXT_PUBLIC_APP_URL: optionalApplicationOrigin,
     API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     STORAGE_PROVIDER: z.literal('r2').default('r2'),
     S3_BUCKET: z.string().min(1).default('file-processing'),
@@ -80,12 +156,15 @@ export const serverEnvironmentSchema = z
           message: `Configure ${left} and ${right} together.`,
         });
     }
-    if (value.NODE_ENV === 'production' && !value.BETTER_AUTH_URL.startsWith('https://'))
-      context.addIssue({
-        code: 'custom',
-        path: ['BETTER_AUTH_URL'],
-        message: 'Production authentication requires HTTPS.',
-      });
+    const origins = applicationOriginsSchema.safeParse(value);
+    if (!origins.success) {
+      for (const issue of origins.error.issues)
+        context.addIssue({ code: 'custom', path: issue.path, message: issue.message });
+    }
+  })
+  .transform((value) => {
+    const origins = applicationOriginsSchema.parse(value);
+    return { ...value, BETTER_AUTH_URL: origins.authUrl, NEXT_PUBLIC_APP_URL: origins.appUrl };
   });
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;
 export function validateServerEnvironment(

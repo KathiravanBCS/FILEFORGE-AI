@@ -43,7 +43,12 @@ describe('Tenant-scoped private records', () => {
       new WorkspaceController().fileDownload(request, 'known-other-file'),
     ).rejects.toThrow('Record not found');
     expect(mocks.file).toHaveBeenCalledWith({
-      where: { id: 'known-other-file', organizationId: 'allowed-tenant', deletedAt: null },
+      where: {
+        id: 'known-other-file',
+        organizationId: 'allowed-tenant',
+        deletedAt: null,
+        status: 'uploaded',
+      },
     });
     expect(mocks.signedDownload).not.toHaveBeenCalled();
   });

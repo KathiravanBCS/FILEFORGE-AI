@@ -189,3 +189,66 @@ describe('business-card processing lifecycle', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('expired direct-upload cleanup', () => {
+  const cleanupTask = { ...task, type: 'cleanup' as const };
+  const cleanupJob = { ...job, type: 'cleanup' };
+  const pending = {
+    id: 'pending-a',
+    organizationId: 'org-a',
+    status: 'pending',
+    objectKey: 'workspaces/org-a/pending-a.png',
+    expiresAt: new Date(Date.now() - 60_000),
+    deletedAt: null,
+  };
+
+  function cleanupSetup(file = pending, claimCount = 1) {
+    const fileUpdate = vi.fn().mockResolvedValue({ count: claimCount });
+    const tx = {
+      processingJob: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const result = setup({
+      processingJob: {
+        findFirst: vi.fn().mockResolvedValue(cleanupJob),
+        findFirstOrThrow: vi.fn().mockResolvedValue(cleanupJob),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      member: { findUnique: vi.fn().mockResolvedValue({ role: 'owner' }) },
+      file: { findMany: vi.fn().mockResolvedValue([file]), updateMany: fileUpdate },
+      exportRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn((callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
+    });
+    return { ...result, fileUpdate };
+  }
+
+  it('removes the expired quarantine object and any private uncommitted copy', async () => {
+    const { processor, storage, fileUpdate } = cleanupSetup();
+    await processor(cleanupTask);
+    expect(storage.delete.mock.calls).toEqual([
+      ['quarantine/org-a/pending-a.png'],
+      ['workspaces/org-a/pending-a.png'],
+    ]);
+    expect(fileUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'pending-a', status: 'purging' }),
+        data: expect.objectContaining({ status: 'purged' }),
+      }),
+    );
+  });
+
+  it('preserves a final object if completion changed its state before cleanup could claim it', async () => {
+    const { processor, storage } = cleanupSetup(pending, 0);
+    await processor(cleanupTask);
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects cross-tenant object metadata before deleting anything', async () => {
+    const { processor, storage } = cleanupSetup({
+      ...pending,
+      objectKey: 'workspaces/victim/pending-a.png',
+    });
+    await expect(processor(cleanupTask)).rejects.toThrow('identity');
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+});

@@ -5,6 +5,7 @@ import {
   type ContactExtractor,
   createContactsWorkbook,
   objectKey,
+  quarantineKey,
   type ProcessingTask,
   type R2Storage,
   validateImage,
@@ -225,13 +226,31 @@ export function createTaskProcessor(deps: {
       },
       take: 100,
     });
+    let purgedFiles = 0;
     for (const file of expiredFiles) {
       await progress(task, 25);
+      const extension = file.objectKey.split('.').at(-1) || '';
+      const identity = { organizationId: task.organizationId, fileId: file.id, extension };
+      if (objectKey(identity) !== file.objectKey)
+        throw new Error('Cleanup object identity does not match its workspace file.');
+      const claimed = await db.file.updateMany({
+        where: {
+          id: file.id,
+          organizationId: task.organizationId,
+          status: file.status,
+          OR: [{ expiresAt: { lte: new Date() } }, { deletedAt: { not: null } }],
+        },
+        data: { status: 'purging' },
+      });
+      if (!claimed.count) continue;
+      if (['pending', 'validating', 'rejected', 'purging'].includes(file.status))
+        await storage.delete(quarantineKey(identity));
       await storage.delete(file.objectKey);
       await db.file.updateMany({
-        where: { id: file.id, organizationId: task.organizationId },
+        where: { id: file.id, organizationId: task.organizationId, status: 'purging' },
         data: { status: 'purged', deletedAt: file.deletedAt || new Date() },
       });
+      purgedFiles += 1;
     }
     const expiredExports = await db.exportRecord.findMany({
       where: {
@@ -265,7 +284,7 @@ export function createTaskProcessor(deps: {
           action: 'retention.cleaned',
           resourceType: 'job',
           resourceId: task.jobId,
-          metadata: { files: expiredFiles.length, exports: expiredExports.length },
+          metadata: { files: purgedFiles, exports: expiredExports.length },
         },
       });
     });

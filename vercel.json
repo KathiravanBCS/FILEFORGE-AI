@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "api": {
+      "root": "apps/api",
+      "framework": "nestjs",
+      "installCommand": "pnpm install --frozen-lockfile --prod=false",
+      "buildCommand": "pnpm --filter @fileforge/database generate && pnpm run build",
+      "devCommand": "pnpm run dev"
+    },
+    "web": {
+      "root": "apps/web",
+      "framework": "nextjs",
+      "installCommand": "pnpm install --frozen-lockfile --prod=false",
+      "buildCommand": "pnpm --filter @fileforge/database generate && pnpm run build",
+      "devCommand": "pnpm run dev",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "api",
+          "format": "url",
+          "env": "FILEFORGE_API_URL"
+        }
+      ]
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": { "service": "web" } }]
+}

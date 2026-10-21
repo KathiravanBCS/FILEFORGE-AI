@@ -4,13 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
-      "env": [
-        "DATABASE_URL",
-        "BETTER_AUTH_SECRET",
-        "BETTER_AUTH_URL",
-        "NEXT_PUBLIC_APP_URL",
-        "NEXT_PUBLIC_API_URL"
-      ]
+      "env": ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "NEXT_PUBLIC_APP_URL"]
     },
     "typecheck": {
       "dependsOn": ["^build"]
@@ -53,7 +47,6 @@
     "BETTER_AUTH_URL",
     "BETTER_AUTH_SECRET",
     "NEXT_PUBLIC_APP_URL",
-    "NEXT_PUBLIC_API_URL",
     "API_PORT",
     "STORAGE_PROVIDER",
     "S3_BUCKET",

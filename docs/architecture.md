@@ -14,8 +14,8 @@ The browser never receives storage, database, queue or AI credentials. The API v
 
 ## Business card lifecycle
 
-1. An authenticated member uploads a signature-validated JPEG, PNG or WebP to the API.
-2. The server stores the file privately in R2 with a unique organization-scoped key and records metadata in Neon.
+1. An authenticated member reserves a pending JPEG, PNG or WebP upload through the API and uploads bytes directly to private R2 quarantine using a five-minute signed PUT.
+2. Completion verifies exact size, MIME, signature and ETag, copies to a unique organization-scoped final key and publishes uploaded metadata in Neon. A signed staging URL cannot overwrite that final key.
 3. The API persists a scan and job, then adds an idempotently identified BullMQ task.
 4. The worker validates ownership, reads the private source, requests structured output from Groq and validates it with Zod.
 5. Extracted content requires human review. The user edits the fields and explicitly approves the contact.
@@ -25,6 +25,8 @@ The browser never receives storage, database, queue or AI credentials. The API v
 Provider failures remain visible as failed/retryable states. Database and queue writes span different services: enqueuing failures must leave recoverable job metadata; operators should monitor orphaned jobs. This is not an exactly-once distributed transaction.
 
 ## Extensions
+
+On Vercel, the public Next service proxies `/api/v1/*` to an internal Nest service through a runtime service binding. Better Auth remains on Next. The continuous BullMQ worker runs on a separate native Node host; see [deployment configuration](vercel.md).
 
 Queue task types, AI interfaces and storage adapters provide extension points for future modules. PDF, QR, invoice and conversion tools are deliberately deferred until the scanner is validated. SSO/SCIM/MFA/passkeys require separate implementation, threat modelling and operational testing; current organization roles do not imply enterprise compliance.
 

@@ -5,6 +5,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { organization } from 'better-auth/plugins';
 import { defaultAc, adminAc, ownerAc, memberAc } from 'better-auth/plugins/organization/access';
 import { Resend } from 'resend';
+import { resolveApplicationOrigins } from '@fileforge/shared';
 import { getDatabase } from './client.js';
 
 export function authCapabilities() {
@@ -38,14 +39,13 @@ function createAuth() {
   const secret = requireAuthSecret();
   const database = getDatabase();
   const capabilities = authCapabilities();
-  const appUrl =
-    process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const { authUrl: appUrl, origin } = resolveApplicationOrigins(process.env);
   const production = process.env.NODE_ENV === 'production';
   return betterAuth({
     appName: 'FileForge AI',
     secret,
     baseURL: appUrl,
-    trustedOrigins: [new URL(appUrl).origin],
+    trustedOrigins: [origin],
     database: prismaAdapter(database, { provider: 'postgresql' }),
     emailAndPassword: {
       enabled: true,

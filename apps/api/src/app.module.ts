@@ -3,18 +3,19 @@ import { APP_GUARD, Reflector } from '@nestjs/core';
 import {
   getOptionsToken,
   getStorageToken,
-  ThrottlerGuard,
   ThrottlerModule,
   type ThrottlerModuleOptions,
   type ThrottlerStorage,
 } from '@nestjs/throttler';
 import { AccountController, WorkspaceController } from './modules/controller.js';
 import { HealthController } from './modules/health.js';
+import { DirectUploadsController } from './modules/uploads.js';
+import { VerifiedUserThrottlerGuard } from './guards/throttle.js';
 import { SessionGuard, WorkspaceGuard } from './guards/auth.js';
 
 @Module({
   imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }])],
-  controllers: [HealthController, AccountController, WorkspaceController],
+  controllers: [HealthController, AccountController, WorkspaceController, DirectUploadsController],
   providers: [
     SessionGuard,
     WorkspaceGuard,
@@ -27,7 +28,7 @@ import { SessionGuard, WorkspaceGuard } from './guards/auth.js';
         options: ThrottlerModuleOptions,
         storage: ThrottlerStorage,
         reflector: Reflector,
-      ) => new ThrottlerGuard(options, storage, reflector),
+      ) => new VerifiedUserThrottlerGuard(options, storage, reflector),
     },
   ],
 })

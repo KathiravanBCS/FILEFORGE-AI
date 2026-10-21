@@ -4,6 +4,8 @@ Use three Node 24 processes (Next.js, API and worker), Neon PostgreSQL, private 
 
 ## Deployment
 
+For one-domain Vercel web/API deployment, service bindings, direct R2 uploads and a separate native Node worker, follow [the Vercel deployment guide](vercel.md). The worker cannot run as an ordinary Vercel request function.
+
 Set production HTTPS URLs, a stable cryptographically random Better Auth secret, managed-service credentials and the allowed application origin. Build from the lockfile, generate Prisma, back up the database, review SQL, run `pnpm db:deploy`, then deploy web/API/worker versions together. Never run development schema reset commands on a managed production database. Session signing needs the real secret in the process; an HTTP proxy placeholder cannot sign local cookies.
 
 Keep object storage private. Use scoped R2 credentials with only required bucket permissions. Rotate secrets in the deployment platform. Never log file bodies, contact contents, tokens, cookies or connection URLs. Put the API behind your HTTPS ingress and configure trusted proxy settings only for infrastructure you control.

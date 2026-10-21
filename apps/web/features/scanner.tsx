@@ -27,6 +27,7 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, errorMessage } from '../lib/api';
+import { uploadBusinessCard } from '../lib/uploads';
 import { MAX_UPLOAD_BYTES, ALLOWED_IMAGE_TYPES } from '@fileforge/shared';
 import { PageHeader } from '../components/page-parts';
 interface LocalImage {
@@ -87,9 +88,7 @@ export function ScannerPage() {
       const ids: string[] = [];
       for (let i = 0; i < images.length; i++) {
         setStatus(`Uploading image ${i + 1} of ${images.length}…`);
-        const body = new FormData();
-        body.set('file', images[i]!.file);
-        const file = await api<{ id: string }>('/files/upload', { method: 'POST', body });
+        const file = await uploadBusinessCard(images[i]!.file);
         ids.push(file.id);
       }
       const groups = batch ? ids.map((id) => [id]) : [ids];

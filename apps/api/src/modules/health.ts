@@ -9,7 +9,7 @@ interface ReadinessChecks {
   storage: boolean;
   queue: boolean;
   authentication: boolean;
-  processingConfigured: boolean;
+  queueConfigured: boolean;
 }
 let cached: { at: number; checks: ReadinessChecks } | undefined;
 let probing: Promise<ReadinessChecks> | undefined;
@@ -45,8 +45,10 @@ async function checkReadiness(): Promise<ReadinessChecks> {
       database,
       storage,
       queue,
-      authentication: Boolean(process.env.BETTER_AUTH_SECRET),
-      processingConfigured: Boolean(process.env.REDIS_URL && process.env.GROQ_API_KEY),
+      authentication: Boolean(
+        process.env.BETTER_AUTH_SECRET && process.env.BETTER_AUTH_SECRET.length >= 32,
+      ),
+      queueConfigured: Boolean(process.env.REDIS_URL),
     };
     cached = { at: Date.now(), checks };
     return checks;
@@ -77,7 +79,8 @@ export class HealthController {
       storage: Boolean(
         process.env.S3_ENDPOINT && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY,
       ),
-      processing: Boolean(process.env.REDIS_URL && process.env.GROQ_API_KEY),
+      processing: Boolean(process.env.REDIS_URL),
+      workerReadiness: 'not-checked' as const,
     };
   }
 
@@ -89,7 +92,7 @@ export class HealthController {
     return {
       status: 'ok',
       checks,
-      note: 'Model availability is checked by the opt-in provider check; no paid inference is performed here.',
+      note: 'This checks API dependencies only. Worker availability and model availability are not checked; verify the worker separately. No paid inference is performed here.',
     };
   }
 }

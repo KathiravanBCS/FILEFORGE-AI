@@ -5,34 +5,20 @@ import {
   UnauthorizedException,
   ForbiddenException,
   BadRequestException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
-import { getAuth, getDatabase } from '@fileforge/database';
+import { getDatabase } from '@fileforge/database';
 import type { AuthenticatedRequest, WorkspaceRole } from '../common/context.js';
 import { roleCanManage, roleCanWrite } from '../common/context.js';
+import { resolveRequestPrincipal } from '../common/session.js';
 
 @Injectable()
 export class SessionGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     if (!request.headers.cookie) throw new UnauthorizedException('Sign in to continue.');
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(request.headers)) {
-      if (typeof value === 'string') headers.set(key, value);
-      else if (Array.isArray(value)) headers.set(key, value.join(', '));
-    }
-    let session;
-    try {
-      session = await getAuth().api.getSession({ headers });
-    } catch {
-      throw new ServiceUnavailableException('Authentication is temporarily unavailable.');
-    }
-    if (!session) throw new UnauthorizedException('Your session is missing or has expired.');
-    request.principal = {
-      userId: session.user.id,
-      email: session.user.email,
-      sessionId: session.session.id,
-    };
+    const principal = await resolveRequestPrincipal(request);
+    if (!principal) throw new UnauthorizedException('Your session is missing or has expired.');
+    request.principal = principal;
     return true;
   }
 }

@@ -26,6 +26,8 @@ On SIGINT/SIGTERM, workers stop fetching new work, drain in-flight processing, c
 
 ## Uploads, downloads, and retention
 
+The browser sends file bytes directly to an R2 quarantine key using a short-lived signed PUT. The API accepts metadata and completion requests, avoiding Vercel's 4.5 MB function payload limit. Configure exact-origin PUT CORS and a one-day `quarantine/` lifecycle rule as described in [the deployment guide](vercel.md). Pending files are ineligible for downloads/scans; completion conditionally copies verified content to a separate final key.
+
 The API checks image magic bytes independently of client MIME/filename. JPEG, PNG, and WebP up to 20 MiB per image are accepted; each card has one image or front/back. The worker revalidates bytes against stored metadata. These checks are not malware scanning or image sanitization: add a managed scanner/quarantine stage before expanding accepted file types or claiming malware protection. Images should not be rendered as trusted HTML.
 
 Object keys contain only validated workspace/file identifiers. The private bucket must never have public access enabled. Only an authorized tenant-scoped database lookup can lead to a download signature; signatures expire after two minutes (maximum five), and include sanitized attachment filenames. Presigned links are bearer credentials until expiry and must not be logged.

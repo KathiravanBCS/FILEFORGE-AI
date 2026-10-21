@@ -33,6 +33,10 @@ pnpm dev
 
 The commands are designed for Windows without WSL; Windows execution has not been validated in this Linux environment. Set environment variables through your shell or deployment settings; never use a local PostgreSQL/Redis substitute. On a constrained cloud machine with an unwritable home directory, use [`scripts/setup-cloud.sh`](scripts/setup-cloud.sh), which directs package-manager caches to writable paths.
 
+## Deploy to Vercel
+
+For deployment, follow [the Vercel Services guide](docs/vercel.md). Import the repository root as one project: Next serves the public domain and calls the internal Nest API using a runtime binding. The persistent BullMQ worker needs a separate native Node background-worker host under the no-Docker requirement.
+
 ## Business card workflow
 
 1. Register and sign in. Registration creates a personal workspace; additional workspaces can be created in the workspace switcher.
@@ -85,6 +89,7 @@ Future PDF/QR/invoice tools, enterprise SSO/SCIM/MFA/passkeys, external malware 
 
 ## Documentation
 
+- [Vercel services deployment and worker hosting](docs/vercel.md)
 - [Architecture and data flow](docs/architecture.md)
 - [Authentication and database setup](docs/auth.md)
 - [API contracts](docs/api.md)

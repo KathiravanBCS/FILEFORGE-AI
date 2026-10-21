@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { validateServerEnvironment } from './environment.js';
+import { resolveApplicationOrigins, validateServerEnvironment } from './environment.js';
 
 function fixture() {
   return {
@@ -58,7 +58,96 @@ describe('runtime configuration security', () => {
         ...fixture(),
         NODE_ENV: 'production',
         BETTER_AUTH_URL: 'https://app.example.com',
+        NEXT_PUBLIC_APP_URL: 'https://app.example.com',
       }).NODE_ENV,
     ).toBe('production');
+  });
+});
+
+describe('canonical deployment origins', () => {
+  it('defaults local development without requiring cloud API browser routing', () => {
+    expect(resolveApplicationOrigins({})).toEqual({
+      authUrl: 'http://localhost:3000',
+      appUrl: 'http://localhost:3000',
+      origin: 'http://localhost:3000',
+    });
+    const environment = validateServerEnvironment({
+      ...fixture(),
+      NEXT_PUBLIC_API_URL: 'obsolete-untrusted-value',
+    });
+    expect(environment).not.toHaveProperty('NEXT_PUBLIC_API_URL');
+  });
+  it('requires both explicit canonical HTTPS origins in production and previews', () => {
+    expect(() =>
+      resolveApplicationOrigins({
+        NODE_ENV: 'production',
+        VERCEL_URL: 'preview.example.com',
+        HOST: 'preview.example.com',
+      }),
+    ).toThrow('BETTER_AUTH_URL');
+    expect(() =>
+      resolveApplicationOrigins({
+        NODE_ENV: 'production',
+        BETTER_AUTH_URL: 'https://app.example.com',
+      }),
+    ).toThrow('NEXT_PUBLIC_APP_URL');
+    expect(() =>
+      resolveApplicationOrigins({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_APP_URL: 'https://app.example.com',
+      }),
+    ).toThrow('BETTER_AUTH_URL');
+    expect(() =>
+      resolveApplicationOrigins({
+        NODE_ENV: 'production',
+        BETTER_AUTH_URL: '',
+        NEXT_PUBLIC_APP_URL: '',
+      }),
+    ).toThrow('BETTER_AUTH_URL');
+  });
+  it('normalizes equivalent canonical origins and does not trust arbitrary incoming hosts', () => {
+    expect(
+      resolveApplicationOrigins({
+        NODE_ENV: 'production',
+        BETTER_AUTH_URL: 'https://APP.example.com:443/',
+        NEXT_PUBLIC_APP_URL: 'https://app.example.com',
+        HOST: 'attacker.example.com',
+      }),
+    ).toEqual({
+      authUrl: 'https://app.example.com',
+      appUrl: 'https://app.example.com',
+      origin: 'https://app.example.com',
+    });
+  });
+  it('rejects disagreement between the web and auth origins', () => {
+    expect(() =>
+      resolveApplicationOrigins({
+        BETTER_AUTH_URL: 'https://app.example.com',
+        NEXT_PUBLIC_APP_URL: 'https://other.example.com',
+      }),
+    ).toThrow('NEXT_PUBLIC_APP_URL');
+    expect(() =>
+      validateServerEnvironment({
+        ...fixture(),
+        BETTER_AUTH_URL: 'https://app.example.com',
+        NEXT_PUBLIC_APP_URL: 'https://other.example.com',
+      }),
+    ).toThrow('NEXT_PUBLIC_APP_URL');
+  });
+  it.each([
+    'https://*.vercel.app',
+    'https://app.example.com/api/auth',
+    'https://app.example.com?redirect=example',
+    'https://app.example.com/#fragment',
+    'https://credential:secret@app.example.com',
+    'javascript:alert(1)',
+    'file:///tmp/app',
+  ])('rejects an unsafe canonical URL without exposing its input', (value) => {
+    expect(() => resolveApplicationOrigins({ BETTER_AUTH_URL: value })).toThrow('BETTER_AUTH_URL');
+    try {
+      resolveApplicationOrigins({ BETTER_AUTH_URL: value });
+    } catch (error) {
+      expect(String(error)).not.toContain(value);
+    }
   });
 });

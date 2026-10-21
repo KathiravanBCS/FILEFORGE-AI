@@ -97,3 +97,39 @@ indexes. It has **not been applied or live-validated against Neon**: the configu
 managed database host currently fails DNS resolution in this environment. Review it
 against the existing database and compare with Prisma's schema diff before deployment.
 No database reset, schema push, or production migration was performed during setup.
+
+## Production and Vercel preview origins
+
+Configure `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` explicitly for each deployed
+environment. Both values must be the same canonical HTTPS web origin, without an API
+path, credentials, query string, or fragment. The shared origin resolver normalizes
+trailing slashes and default ports, rejects disagreement, and fails closed in production
+if either origin is absent. The web runtime and its corresponding API deployment must
+use the same canonical origin and the same securely supplied Better Auth signing secret
+and session database. Browser requests use same-origin `/api/auth` and `/api/v1` paths.
+The backend service address is a server-only runtime binding managed by deployment; no
+public API URL is needed in the browser bundle.
+
+Vercel preview deployments also run with `NODE_ENV=production`. Assign a deliberate
+canonical preview origin (for example, a stable preview alias you control) and configure
+both canonical-origin variables for that preview environment. Do not point a preview at
+the production canonical origin, switch to development mode, trust request `Host` or
+`X-Forwarded-Host` headers, or allow every `*.vercel.app` origin to make preview sign-in
+work. A deployment whose canonical hostname has not been configured can serve public
+pages, but authentication is intentionally unavailable until its trusted origin is set.
+This code does not infer trust from `VERCEL_URL` or an incoming request host.
+
+`NEXT_PUBLIC_APP_URL` is a build-time public Next.js variable. After changing a canonical
+origin, rebuild/redeploy the web app and update the matching API environment rather than
+assuming an existing browser bundle changes at runtime. `BETTER_AUTH_URL` is server-only
+and is resolved lazily when the authentication instance is initialized, so a public-page
+build does not require cloud credentials. Its value must agree with the built public
+origin. Register the exact Google/Microsoft callback URLs for each environment; use
+separate preview provider configuration and data when applicable.
+
+Production sessions use Secure, HttpOnly, SameSite=Lax cookies and keep Better Auth's
+host-only cookie scope. Do not enable a shared parent-domain cookie to bridge preview
+and production hosts. Session revocation remains checked against PostgreSQL because
+cookie caching is disabled. Origin and cookie controls have focused configuration
+coverage; successful real-provider authentication still requires reachable Neon, a
+valid signing secret, and configured verification email in production.
