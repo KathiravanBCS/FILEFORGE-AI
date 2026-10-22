@@ -64,8 +64,25 @@ async function checkRuntime(entrypoint) {
       );
       await response.arrayBuffer();
     }
+    let throttled = false;
+    for (let request = 0; request < 120; request++) {
+      const response = await fetch(`${base}/api/v1/workspaces`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      await response.arrayBuffer();
+      if (response.status === 429) {
+        assert(
+          Number(response.headers.get('retry-after')) > 0,
+          'Rate limits must include a retry delay',
+        );
+        throttled = true;
+        break;
+      }
+      assert.equal(response.status, 401, 'Anonymous requests must remain protected');
+    }
+    assert(throttled, 'The compiled rate limiter must reject excessive requests with 429');
     console.log(
-      'Compiled API smoke passed: health 200, anonymous workspace 401, CSRF 403, Swagger HTML/JSON/CSS 200.',
+      'Compiled API smoke passed: health 200, anonymous workspace 401, CSRF 403, rate limit 429, Swagger HTML/JSON/CSS 200.',
     );
   } finally {
     clearTimeout(timer);
@@ -79,7 +96,8 @@ async function checkBuild() {
   try {
     // Vercel can place the handler outside the service package's ESM scope.
     // Explicit CommonJS scope here catches accidental .js ESM output, while
-    // native Node with type stripping disabled rejects unbundled workspace TS.
+    // disabling require(esm) matches Vercel's stricter module loader, and
+    // disabling type stripping rejects unbundled workspace TypeScript.
     await cp(new URL('../apps/api/dist/', import.meta.url), directory, {
       recursive: true,
       verbatimSymlinks: true,
@@ -98,6 +116,7 @@ async function checkBuild() {
         process.execPath,
         [
           '--no-experimental-strip-types',
+          '--no-experimental-require-module',
           fileURLToPath(import.meta.url),
           '--child',
           join(directory, 'main.mjs'),
