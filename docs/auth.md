@@ -27,6 +27,32 @@ OAuth is enabled per provider only when both fields are configured:
 `MICROSOFT_CLIENT_SECRET`. Register the Better Auth callback URL for each provider,
 `<web-origin>/api/auth/callback/google` or `/api/auth/callback/microsoft`.
 
+## Missing verification emails
+
+Use `/verify-email` to request a fresh verification email for an existing unverified
+account. The registration confirmation and login screens link to this page. Requests
+that succeed use conditional wording because unknown and already-verified addresses
+receive a generic response; the UI does not disclose account existence or promise inbox
+delivery.
+
+Repeating registration is not a resend mechanism. With required verification, Better Auth
+returns an intentionally generic successful signup response for existing addresses and
+does not send another email. A newly created account may also remain unverified after
+its initial email is rejected. After correcting email configuration, request verification
+again through `/verify-email`; the earlier rejected email is not retried automatically.
+
+Resend's `onboarding@resend.dev` sender is restricted to the address associated with the
+Resend account. For other recipients, verify a domain you control and configure
+`EMAIL_FROM` to use that domain, then redeploy. Changing the sender does not require a
+new API key if the existing key has sending access to that verified domain.
+
+Explicit verification requests await the email callback. Provider rejection and transport
+failures return an error instead of a success message. Server diagnostics record only a
+sanitized provider status, never recipients, email bodies, tokens, sender values or API
+keys. Better Auth limits verification requests to three per minute per IP/path; production
+still needs distributed abuse protection. A provider accepting a request does not prove
+inbox delivery: inspect the provider's delivery events when needed.
+
 ## Schema and migrations
 
 The authentication model shapes follow Better Auth's built-in schemas: User, Session,

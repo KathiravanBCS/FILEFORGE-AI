@@ -50,7 +50,7 @@ const copy = {
   },
   verify: {
     title: 'Verify your email.',
-    description: 'Keep your account secure by confirming your email.',
+    description: 'Use the email address you registered with to request a verification link.',
   },
 };
 type Mode = keyof typeof copy;
@@ -72,6 +72,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [verificationRequested, setVerificationRequested] = useState(false);
   const [token, setToken] = useState('');
   const form = useForm({
     initialValues: { name: '', email: '', password: '', confirmPassword: '', agreed: false },
@@ -98,6 +99,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setToken(new URLSearchParams(window.location.search).get('token') || '');
   }, []);
   async function submit(values: typeof form.values) {
+    if (
+      pending ||
+      ((mode === 'forgot' || mode === 'verify') && !cap.email) ||
+      (mode === 'register' && !cap.registrationAvailable)
+    )
+      return;
     setPending(true);
     setError('');
     setSuccess('');
@@ -134,7 +141,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         throw new Error(result.error.message || 'Please check your details and try again.');
       if (mode === 'register' && cap.verificationRequired) {
         setSuccess(
-          'Your account has been created. Check your inbox to verify your email before signing in.',
+          'To continue, sign in or request a verification email using the address you entered.',
         );
       } else if (mode === 'login' || mode === 'register') {
         router.push('/dashboard');
@@ -144,7 +151,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
           'If an account exists for this address, a reset email has been requested. Check your inbox.',
         );
       else if (mode === 'reset') setSuccess('Your password has been updated. You can now sign in.');
-      else setSuccess('A verification email has been requested. Check your inbox.');
+      else {
+        setVerificationRequested(true);
+        setSuccess(
+          'If this address belongs to an unverified account, a verification email has been requested.',
+        );
+      }
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -252,20 +264,37 @@ export function AuthForm({ mode }: { mode: Mode }) {
             </Alert>
           )}
           {error && (
-            <Alert color="red" mb="lg" title="Unable to continue">
+            <Alert
+              color="red"
+              mb="lg"
+              title={
+                mode === 'verify' ? 'Unable to request verification email' : 'Unable to continue'
+              }
+            >
               {error}
             </Alert>
           )}
-          {success ? (
-            <Stack>
-              <Alert icon={<IconCheck size={18} />} color="teal">
+          {success && (
+            <Stack mb={mode === 'verify' ? 'lg' : undefined}>
+              <Alert
+                icon={mode === 'reset' ? <IconCheck size={18} /> : <IconInfoCircle size={18} />}
+                color={mode === 'reset' ? 'teal' : 'blue'}
+              >
                 {success}
               </Alert>
-              <Button component={Link} href="/login" variant="light">
-                Back to sign in
-              </Button>
+              {mode === 'register' && cap.email && (
+                <Button component={Link} href="/verify-email">
+                  Resend verification email
+                </Button>
+              )}
+              {mode !== 'verify' && (
+                <Button component={Link} href="/login" variant="light">
+                  Back to sign in
+                </Button>
+              )}
             </Stack>
-          ) : (
+          )}
+          {(!success || mode === 'verify') && (
             <form onSubmit={form.onSubmit((v) => void submit(v))}>
               <Stack gap="md">
                 {mode === 'register' && (
@@ -338,8 +367,11 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   size="md"
                   mt={6}
                   loading={pending}
+                  aria-busy={pending}
                   disabled={
-                    (emailFlow && !cap.email) || (mode === 'register' && !cap.registrationAvailable)
+                    pending ||
+                    (emailFlow && !cap.email) ||
+                    (mode === 'register' && !cap.registrationAvailable)
                   }
                   rightSection={<IconArrowRight size={16} />}
                 >
@@ -351,10 +383,27 @@ export function AuthForm({ mode }: { mode: Mode }) {
                         ? 'Send reset link'
                         : mode === 'reset'
                           ? 'Update password'
-                          : 'Send verification email'}
+                          : pending
+                            ? 'Requesting verification email…'
+                            : verificationRequested
+                              ? 'Resend verification email'
+                              : 'Send verification email'}
                 </Button>
               </Stack>
             </form>
+          )}
+          {(mode === 'login' || mode === 'register') && !success && cap.email && (
+            <Text size="sm" c="dimmed" ta="center" mt={20}>
+              Need to verify your email?{' '}
+              <Anchor component={Link} href="/verify-email" size="sm">
+                Resend verification email
+              </Anchor>
+            </Text>
+          )}
+          {mode === 'verify' && (
+            <Button component={Link} href="/login" variant="subtle" fullWidth mt="md">
+              Back to sign in
+            </Button>
           )}
           {mode === 'login' && (
             <Text size="sm" c="dimmed" ta="center" mt={24}>

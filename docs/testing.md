@@ -24,6 +24,7 @@ On this cloud machine, use `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromiu
 9. Attempt the same contact/file/scan/job/export IDs from the other user's workspace. Reads and writes must be rejected, and no signed URL should be issued.
 10. Exercise provider failure/retry and cancellation; verify truthful failed/review/completed states. Revoke a session and confirm subsequent API calls fail.
 11. Test dark/system/accent/density preferences across refresh and a second browser after explicit Save. Test email verification/password reset and configured OAuth independently.
+12. After a deliberately rejected verification email, correct the sender configuration and use `/verify-email` for that existing unverified account. Confirm a fresh request appears in Resend, verify the new link, and confirm provider rejection/rate-limit responses remain visible without claiming delivery. Repeating signup must not claim a new account or a delivered email.
 
 This acceptance procedure remains outstanding until the managed services are reachable. It is not reported as passed by mocked tests.
 

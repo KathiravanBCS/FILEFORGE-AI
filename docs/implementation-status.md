@@ -5,7 +5,7 @@ FileForge AI has an implemented application foundation and business-card workflo
 ## Implemented
 
 - pnpm/Turborepo monorepo with Next.js, NestJS, worker and shared database/contracts/UI/integration packages.
-- Better Auth registration, sessions, profile/password/session management, optional Resend and Google/Microsoft configuration. Production registration is rejected on the server when email verification cannot be delivered.
+- Better Auth registration, sessions, profile/password/session management, optional Resend and Google/Microsoft configuration. Explicit verification resend is linked from registration/login and provider failures remain visible; duplicate signup does not claim a new account or another email. Production registration is rejected on the server when email verification cannot be delivered.
 - Personal and organization workspaces, four roles, membership policies, invitations and tenant-scoped API/worker lookups.
 - Nineteen Prisma models and an initial SQL migration, including normalized contacts, files, jobs, exports, usage, preferences and audit logs.
 - Responsive public/authenticated interfaces, dynamic Mantine appearance and a live preview, real-data dashboard/usage views and a reusable server-paginated contacts table.
@@ -24,8 +24,8 @@ FileForge AI has an implemented application foundation and business-card workflo
 | All application/package production builds | Passed; Next.js builds all 27 routes                                                                |
 | Strict TypeScript checks                  | Passed across packages, applications, scripts and test configuration                                |
 | ESLint and formatting                     | Passed                                                                                              |
-| Unit, API HTTP and worker tests           | 172 passed across 23 files; external boundaries mocked                                              |
-| Playwright public/authentication tests    | 8 passed across desktop and mobile Chromium                                                         |
+| Unit, API HTTP and worker tests           | 181 passed across 24 files; external boundaries mocked                                              |
+| Playwright public/authentication tests    | 22 passed across desktop and mobile Chromium                                                        |
 | Saved development command                 | `pnpm dev` starts web/API; landing200, health200 and protected401 verified                          |
 | Production web runtime                    | Landing200, anonymous redirect307 and production signup without email503 verified                   |
 | Compiled NestJS runtime                   | Started; health200, protected requests401, disallowed origin403, rate limit429 and Swagger verified |

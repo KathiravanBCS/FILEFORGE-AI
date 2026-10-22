@@ -28,11 +28,37 @@ async function sendEmail(to: string, subject: string, text: string): Promise<voi
     throw new APIError('SERVICE_UNAVAILABLE', {
       message: 'Transactional email is not configured. Contact your administrator.',
     });
-  const result = await new Resend(key).emails.send({ from, to, subject, text });
-  if (result.error)
+  // Provider error objects can contain recipients, sender details, or message content.
+  // Log only a static event and a validated numeric HTTP status, never the raw error.
+  const logFailure = (status?: number | null) => {
+    console.error(
+      JSON.stringify({
+        event: 'transactional_email_failed',
+        provider: 'resend',
+        ...(typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599
+          ? { providerStatus: status }
+          : {}),
+      }),
+    );
+  };
+  let result;
+  try {
+    result = await new Resend(key).emails.send({ from, to, subject, text });
+  } catch {
+    logFailure();
     throw new APIError('SERVICE_UNAVAILABLE', {
-      message: 'The email provider could not deliver this message. Please try again later.',
+      message: 'The email provider is unavailable. Please try again later.',
     });
+  }
+  if (result.error) {
+    logFailure(result.error.statusCode);
+    throw new APIError('SERVICE_UNAVAILABLE', {
+      message:
+        result.error.statusCode === 403
+          ? 'The email provider rejected this message. Contact your administrator to check sender authorization and recipient restrictions.'
+          : 'The email provider could not accept this message. Please try again later.',
+    });
+  }
 }
 
 function createAuth() {
