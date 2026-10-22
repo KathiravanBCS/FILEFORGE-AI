@@ -2,6 +2,9 @@ packages:
   - apps/*
   - packages/*
 
+# Keep production dependency tracing inside the repository on every machine.
+enableGlobalVirtualStore: false
+
 allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': false

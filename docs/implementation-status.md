@@ -17,30 +17,30 @@ FileForge AI has an implemented application foundation and business-card workflo
 
 ## Local evidence
 
-| Check                                     | Result                                                                                              |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Lockfile installation                     | Passed, including a frozen offline repeat                                                           |
-| Prisma client generation                  | Passed through the official version-pinned WASM/TypeScript generator                                |
-| All application/package production builds | Passed; Next.js builds all 27 routes                                                                |
-| Strict TypeScript checks                  | Passed across packages, applications, scripts and test configuration                                |
-| ESLint and formatting                     | Passed                                                                                              |
-| Unit, API HTTP and worker tests           | 190 passed across 25 files; external boundaries mocked                                              |
-| Playwright public/authentication tests    | 22 passed across desktop and mobile Chromium                                                        |
-| Saved development command                 | `pnpm dev` starts web/API; landing200, health200 and protected401 verified                          |
-| Production web runtime                    | Landing200, anonymous redirect307 and production signup without email503 verified                   |
-| Compiled NestJS runtime                   | Started; health200, protected requests401, disallowed origin403, rate limit429 and Swagger verified |
-| Isolated compiled API startup             | Native Node under CommonJS package scope: health200, anonymous workspace401 and origin403 passed    |
-| Compiled worker runtime                   | Started, attempted verified Redis TLS, and shut down cleanly; queue connection failed               |
-| Dependency audit                          | No known production vulnerabilities reported after compatible ExcelJS UUID override                 |
-| Secret review                             | No injected provider or generated session secrets found in trackable source files                   |
+| Check                                     | Result                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Lockfile installation                     | Passed, including a frozen offline repeat                                                                         |
+| Prisma client generation                  | Passed through the official version-pinned WASM/TypeScript generator                                              |
+| All application/package production builds | Passed; Next.js builds all 27 routes                                                                              |
+| Strict TypeScript checks                  | Passed across packages, applications, scripts and test configuration                                              |
+| ESLint and formatting                     | Passed                                                                                                            |
+| Unit, API HTTP and worker tests           | 190 passed across 25 files; external boundaries mocked                                                            |
+| Playwright public/authentication tests    | 22 passed across desktop and mobile Chromium                                                                      |
+| Saved development command                 | `pnpm dev` starts web/API; landing200, health200 and protected401 verified                                        |
+| Production web runtime                    | Landing200, anonymous redirect307 and production signup without email503 verified                                 |
+| Compiled NestJS runtime                   | Started; health200, protected requests401, disallowed origin403, rate limit429 and Swagger verified               |
+| Isolated compiled API startup             | Detached deployable output only: health200, anonymous workspace401, origin403 and Swagger HTML/JSON/CSS200 passed |
+| Compiled worker runtime                   | Started, attempted verified Redis TLS, and shut down cleanly; queue connection failed                             |
+| Dependency audit                          | No known production vulnerabilities reported after compatible ExcelJS UUID override                               |
+| Secret review                             | No injected provider or generated session secrets found in trackable source files                                 |
 
 Browser coverage includes public navigation, weak-password validation before authentication requests, explicit unavailable email states, anonymous route protection, legal-review notices and responsive layout. It does not cover authenticated live scanning. The production signup prerequisite has separate server-handler tests.
 
 Vercel CLI 65.0.0 `vercel dev -L` detected both services and injected the web-to-API binding. Checks passed for landing/login/config (200), bound health (200), anonymous protected API (401), wrong-origin mutation (403) and the existing unavailable-email auth handler (503). The ordinary API port 4000 was closed, proving the proxy used the injected binding. A subprocess regression also reproduces Vercel listen interception to prevent the prior entrypoint import deadlock. The live Vercel schema and CLI configuration validator accept `vercel.json`; no agent-operated Vercel cloud deployment has been run.
 
-The user subsequently deployed `https://fileforge-ai-two.vercel.app` and reported successful email verification. Live anonymous checks confirmed the web authentication handler responds while all tested API routes, including health, return Vercel `FUNCTION_INVOCATION_FAILED`. The supplied API runtime log identifies `Cannot use import statement outside a module` in `/var/task/main.js`. The fix explicitly selects the compiled API output and emits `.mjs` entrypoint/chunks, with a required isolated native-Node startup check in CI. The production deployment must be updated and checked before this incident can be considered resolved.
+The user deployed `https://fileforge-ai-two.vercel.app` and reported successful email verification. API logs identified two packaging failures: ESM JavaScript loaded as CommonJS, then missing runtime dependencies when Services mounted the compiled directory at the function root. The API now emits `.mjs` and packages a traced dependency tree plus Swagger assets inside `dist`. Its required startup check copies only that output into an empty CommonJS package scope, supplies no host dependencies or provider credentials, rejects escaping links and checks real HTTP routes. The package is approximately30 MiB.
 
-An isolated build using the installed Vercel NestJS/Node builders selected `dist/main.mjs` and emitted a Node 24 Lambda with all 39 bundle chunks. The materialized artifact ran under an explicitly CommonJS package scope without TypeScript stripping: health200, anonymous workspaces401 and wrong-origin mutation403 passed. This verifies the packaging fix locally, rather than claiming a cloud redeployment. The updated local Services command also passed landing200, bound health200, workspaces401, origin403 and auth-session200 checks. Its compiled API requires restarting the command after source changes; automatic bundle reload did not occur in the pinned CLI.
+The local Services command also passed landing200, bound health200, workspaces401, origin403 and auth-session200 checks. Its compiled API requires restarting the command after source changes; automatic bundle reload did not occur in the pinned CLI. A successful build or anonymous health request does not establish that authenticated database operations or provider-backed scanning work; complete the live acceptance checks after deployment.
 
 The runtime dependency audit reports no known vulnerabilities. The full development audit reports one unpatched Prisma glob-tooling advisory; see [audit scope](testing.md#dependency-audit-scope).
 

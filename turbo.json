@@ -17,6 +17,11 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@fileforge/api#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/package-api.mjs"],
+      "outputs": ["dist/**"]
+    },
     "@fileforge/integrations#build": {
       "dependsOn": ["^build"],
       "outputs": []

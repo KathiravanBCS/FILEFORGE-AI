@@ -5,7 +5,7 @@
   "name": "@fileforge/api",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
-    "build": "tsup",
+    "build": "tsup && node ../../scripts/package-api.mjs",
     "start": "node --env-file-if-exists=../../.env dist/main.mjs",
     "typecheck": "tsc --noEmit"
   },

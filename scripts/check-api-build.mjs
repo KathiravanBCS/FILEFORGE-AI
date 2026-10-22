@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { cp, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 async function checkRuntime(entrypoint) {
@@ -51,7 +51,22 @@ async function checkRuntime(entrypoint) {
       signal: AbortSignal.timeout(5000),
     });
     assert.equal(csrf.status, 403, 'Untrusted mutation origins must return 403');
-    console.log('Compiled API smoke passed: health 200, anonymous workspace 401, CSRF 403.');
+    for (const [path, contentType] of [
+      ['/api/docs', 'text/html'],
+      ['/api/docs-json', 'application/json'],
+      ['/api/docs/swagger-ui.css', 'text/css'],
+    ]) {
+      const response = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(5000) });
+      assert.equal(response.status, 200, `Packaged API ${path} must return 200`);
+      assert(
+        response.headers.get('content-type')?.startsWith(contentType),
+        `Packaged API ${path} must serve ${contentType}`,
+      );
+      await response.arrayBuffer();
+    }
+    console.log(
+      'Compiled API smoke passed: health 200, anonymous workspace 401, CSRF 403, Swagger HTML/JSON/CSS 200.',
+    );
   } finally {
     clearTimeout(timer);
     http.Server.prototype.listen = originalListen;
@@ -65,13 +80,24 @@ async function checkBuild() {
     // Vercel can place the handler outside the service package's ESM scope.
     // Explicit CommonJS scope here catches accidental .js ESM output, while
     // native Node with type stripping disabled rejects unbundled workspace TS.
-    await cp(new URL('../apps/api/dist/', import.meta.url), directory, { recursive: true });
+    await cp(new URL('../apps/api/dist/', import.meta.url), directory, {
+      recursive: true,
+      verbatimSymlinks: true,
+    });
+    async function checkLinks(folder) {
+      for (const entry of await readdir(folder, { withFileTypes: true })) {
+        const filename = join(folder, entry.name);
+        if (entry.isSymbolicLink()) {
+          const target = relative(directory, await realpath(filename));
+          assert(
+            !isAbsolute(target) && target !== '..' && !target.startsWith(`..${sep}`),
+            'Runtime links must stay inside the deployable artifact',
+          );
+        } else if (entry.isDirectory()) await checkLinks(filename);
+      }
+    }
+    await checkLinks(directory);
     await writeFile(join(directory, 'package.json'), '{"type":"commonjs"}\n');
-    await symlink(
-      fileURLToPath(new URL('../apps/api/node_modules/', import.meta.url)),
-      join(directory, 'node_modules'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
     const code = await new Promise((resolve, reject) => {
       const child = spawn(
         process.execPath,
