@@ -69,3 +69,43 @@ it('imports under Vercel listen interception before serving real HTTP requests',
   expect(result.output).toContain('"health":200,"protected":401');
   expect(result.code, result.output).toBe(0);
 }, 15_000);
+
+it('fails initialization with safe stage diagnostics instead of swallowing invalid production configuration', async () => {
+  const privateValue = 'private-origin-value-must-not-be-logged';
+  const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
+      cwd: directory,
+      env: {
+        PATH: process.env.PATH,
+        NODE_ENV: 'production',
+        VERCEL: '1',
+        PORT: '45678',
+        BETTER_AUTH_URL: 'https://canonical.example.test',
+        NEXT_PUBLIC_APP_URL: `https://canonical.example.test/${privateValue}`,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', (chunk) => {
+      output += String(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      output += String(chunk);
+    });
+    const timer = setTimeout(() => child.kill('SIGTERM'), 10_000);
+    child.once('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      resolve({ code, output });
+    });
+  });
+  expect(result.code, result.output).toBe(1);
+  expect(result.output).toContain('"event":"api_startup_failed"');
+  expect(result.output).toContain('"stage":"origin"');
+  expect(result.output).toContain('"invalidEnvironmentFields":["NEXT_PUBLIC_APP_URL"]');
+  expect(result.output).toContain('API startup failed at origin');
+  expect(result.output).not.toContain(privateValue);
+}, 15_000);

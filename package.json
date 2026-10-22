@@ -22,7 +22,8 @@
     "check:providers": "node --env-file-if-exists=.env --use-env-proxy --import tsx scripts/check-providers.ts",
     "env:check": "node --env-file-if-exists=.env --import tsx scripts/validate-env.ts",
     "env:init": "tsx scripts/init-local-env.ts",
-    "dev:vercel": "pnpm db:generate && pnpm --allow-build=esbuild dlx vercel@65.0.0 dev -L"
+    "dev:vercel": "pnpm db:generate && pnpm --filter @fileforge/api build && pnpm --allow-build=esbuild dlx vercel@65.0.0 dev -L",
+    "check:api-build": "node scripts/check-api-build.mjs"
   },
   "devDependencies": {
     "turbo": "2.11.9",

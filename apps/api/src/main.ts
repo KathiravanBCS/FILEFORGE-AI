@@ -10,12 +10,20 @@ import { SafeExceptionFilter } from './common/errors.js';
 
 import { AppModule } from './app.module.js';
 import { apiRuntime } from './common/runtime.js';
+import { startupFailureDiagnostic, type StartupStage } from './common/startup.js';
 
 const log = pino({ name: 'fileforge-api' });
-const { port, handleProcessSignals } = apiRuntime();
-const { origin: appOrigin } = resolveApplicationOrigins(process.env);
+let stage: StartupStage = 'runtime';
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] });
+  stage = 'runtime';
+  const { port, handleProcessSignals } = apiRuntime();
+  stage = 'origin';
+  const { origin: appOrigin } = resolveApplicationOrigins(process.env);
+  stage = 'application';
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log'],
+    abortOnError: false,
+  });
   app.use(helmet());
   app.enableCors({
     origin: appOrigin,
@@ -50,6 +58,7 @@ async function bootstrap() {
     next();
   });
   app.useGlobalFilters(new SafeExceptionFilter());
+  stage = 'documentation';
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
@@ -62,6 +71,7 @@ async function bootstrap() {
       .build(),
   );
   SwaggerModule.setup('api/docs', app, document);
+  stage = 'listen';
   await app.listen(port, '0.0.0.0');
   log.info({ port }, 'FileForge API listening');
   if (handleProcessSignals)
@@ -78,9 +88,8 @@ async function bootstrap() {
 // Vercel captures the server's listen call before it completes importing this
 // entrypoint. Awaiting bootstrap at module scope deadlocks that interception.
 void bootstrap().catch((error: unknown) => {
-  log.error(
-    { errorType: error instanceof Error ? error.name : 'UnknownError' },
-    'API startup failed',
-  );
-  if (handleProcessSignals) process.exitCode = 1;
+  log.error(startupFailureDiagnostic(stage, error, process.env), 'API startup failed');
+  // Fail initialization instead of leaving a partially started function alive.
+  // The replacement error contains no original message, stack, cause, or values.
+  throw new Error(`API startup failed at ${stage}`);
 });

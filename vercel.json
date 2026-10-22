@@ -6,7 +6,13 @@
       "framework": "nestjs",
       "installCommand": "pnpm install --frozen-lockfile --prod=false",
       "buildCommand": "pnpm --filter @fileforge/database generate && pnpm run build",
-      "devCommand": "pnpm run dev"
+      "devCommand": "pnpm run dev",
+      "outputDirectory": "dist",
+      "functions": {
+        "dist/main.mjs": {
+          "includeFiles": "dist/**"
+        }
+      }
     },
     "web": {
       "root": "apps/web",
@@ -24,5 +30,12 @@
       ]
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": { "service": "web" } }]
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    }
+  ]
 }
