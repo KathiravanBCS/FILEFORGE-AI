@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { copyFile, lstat, mkdir, readdir, realpath, rm, symlink } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nodeFileTrace } from '@vercel/nft';
@@ -16,24 +18,17 @@ function inside(parent, filename) {
   return !isAbsolute(child) && child !== '..' && !child.startsWith(`..${sep}`);
 }
 
-// Vercel Services mounts dist at the function root. Flatten both pnpm's real
-// package tree and the service's package aliases into that same runtime root.
-function destination(filename) {
-  for (const root of [join(service, 'node_modules'), join(repository, 'node_modules')]) {
-    if (inside(root, filename)) return join(runtimeModules, relative(root, filename));
-  }
-  if (inside(output, filename)) return filename;
-  throw new Error(
-    `Unexpected runtime dependency outside node_modules: ${relative(repository, filename)}`,
-  );
-}
-
-function bundledWorkspaceMetadata(filename) {
+function bundledWorkspaceMetadata(filename, fixture) {
   for (const name of workspacePackages) {
-    if (filename === join(service, 'node_modules/@fileforge', name)) return true;
-    if (filename === join(repository, 'packages', name, 'package.json')) return true;
+    for (const root of [fixture, join(fixture, 'apps/api')]) {
+      if (filename === join(root, 'node_modules/@fileforge', name)) return true;
+    }
+    if (filename === join(fixture, 'packages', name, 'package.json')) return true;
   }
-  return filename === join(service, 'package.json');
+  return (
+    filename === join(fixture, 'package.json') ||
+    filename === join(fixture, 'apps/api/package.json')
+  );
 }
 
 // These features are not used by this HTTP-only API. Missing dependencies for
@@ -50,83 +45,128 @@ const optionalDependencies = new Set([
   'class-transformer/cjs/storage',
 ]);
 
+const entries = (await readdir(output)).filter((name) => name.endsWith('.mjs'));
+assert(entries.includes('main.mjs'), 'Build the API before packaging its runtime');
 await rm(runtimeModules, { recursive: true, force: true });
-const entries = (await readdir(output))
-  .filter((name) => name.endsWith('.mjs'))
-  .map((name) => join(output, name));
-assert(entries.includes(join(output, 'main.mjs')), 'Build the API before packaging its runtime');
-const trace = await nodeFileTrace(entries, {
-  base: repository,
-  processCwd: service,
-  ts: false,
-  mixedModules: true,
-});
-
-// Swagger obtains its public directory through a runtime function. NFT sees
-// absolute-path.js but cannot infer the files Express serves from that folder.
-const serviceRequire = createRequire(join(service, 'package.json'));
-const swaggerRequire = createRequire(serviceRequire.resolve('@nestjs/swagger'));
-const swaggerAssets = dirname(swaggerRequire.resolve('swagger-ui-dist/absolute-path.js'));
-async function includeAssets(directory) {
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const filename = join(directory, entry.name);
-    if (entry.isDirectory()) await includeAssets(filename);
-    else trace.fileList.add(relative(repository, filename));
+const fixture = await mkdtemp(join(tmpdir(), 'fileforge-api-runtime-'));
+try {
+  const fixtureService = join(fixture, 'apps/api');
+  const fixtureOutput = join(fixtureService, 'dist');
+  // Install the API's workspace dependency closure from the exact lockfile.
+  // Only manifests and compiled code enter this staging directory; no .env,
+  // provider credentials, source files, or lifecycle hooks are involved.
+  const metadata = [
+    'package.json',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'apps/api/package.json',
+    ...[...workspacePackages].map((name) => `packages/${name}/package.json`),
+  ];
+  for (const filename of metadata) {
+    const target = join(fixture, filename);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(join(repository, filename), target);
   }
-}
-await includeAssets(swaggerAssets);
+  await mkdir(fixtureOutput, { recursive: true });
+  for (const filename of entries) {
+    await copyFile(join(output, filename), join(fixtureOutput, filename));
+  }
 
-const links = new Map();
-let copied = 0;
-let bytes = 0;
-for (const filename of trace.fileList) {
-  const source = resolve(repository, filename);
-  assert(inside(repository, source), 'Runtime dependencies must stay inside the repository');
-  if (bundledWorkspaceMetadata(source)) continue;
-  const target = destination(source);
-  if (target === source) continue;
-  const stat = await lstat(source);
-  if (stat.isSymbolicLink()) {
-    const resolved = await realpath(source);
-    const linkedTarget = destination(resolved);
-    const existing = links.get(target);
-    assert(!existing || existing === linkedTarget, 'Conflicting runtime package aliases');
-    links.set(target, linkedTarget);
-  } else {
-    assert(stat.isFile(), 'Only dependency files and package aliases may be copied');
+  // Services traces every output entry as a file. Directory aliases from
+  // pnpm's isolated layout cause NFT's EISDIR/missing-file failure there.
+  // A frozen hoisted install supplies physical package directories while
+  // preserving dependency versions and nested overrides selected by pnpm.
+  await new Promise((accept, reject) => {
+    const install = spawn(
+      'pnpm',
+      [
+        'install',
+        '--frozen-lockfile',
+        '--prefer-offline',
+        '--ignore-scripts',
+        '--prod',
+        '--node-linker=hoisted',
+        '--reporter=append-only',
+      ],
+      { cwd: fixture, stdio: 'inherit', env: { ...process.env, CI: 'true' } },
+    );
+    install.once('error', reject);
+    install.once('exit', (code) => {
+      if (code === 0) accept();
+      else reject(new Error(`Locked API runtime install failed with exit code ${code}`));
+    });
+  });
+
+  function destination(filename) {
+    for (const root of [join(fixtureService, 'node_modules'), join(fixture, 'node_modules')]) {
+      if (inside(root, filename)) return join(runtimeModules, relative(root, filename));
+    }
+    if (inside(fixtureOutput, filename)) return join(output, relative(fixtureOutput, filename));
+    throw new Error(
+      `Unexpected runtime dependency outside node_modules: ${relative(fixture, filename)}`,
+    );
+  }
+
+  const trace = await nodeFileTrace(
+    entries.map((filename) => join(fixtureOutput, filename)),
+    { base: fixture, processCwd: fixtureService, ts: false, mixedModules: true },
+  );
+  // Swagger computes its public directory at runtime. Include the assets
+  // explicitly because NFT can only infer absolute-path.js itself.
+  const serviceRequire = createRequire(join(fixtureService, 'package.json'));
+  const swaggerRequire = createRequire(serviceRequire.resolve('@nestjs/swagger'));
+  const swaggerAssets = dirname(swaggerRequire.resolve('swagger-ui-dist/absolute-path.js'));
+  async function includeAssets(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const filename = join(directory, entry.name);
+      if (entry.isDirectory()) await includeAssets(filename);
+      else trace.fileList.add(relative(fixture, filename));
+    }
+  }
+  await includeAssets(swaggerAssets);
+
+  const destinations = new Map();
+  let bytes = 0;
+  for (const filename of trace.fileList) {
+    const source = resolve(fixture, filename);
+    assert(inside(fixture, source), 'Runtime dependencies must stay inside the staging directory');
+    if (bundledWorkspaceMetadata(source, fixture) || inside(fixtureOutput, source)) continue;
+    const target = destination(source);
+    const stat = await lstat(source);
+    assert(stat.isFile(), 'Packaged runtime dependencies must be regular files without aliases');
+    assert(inside(fixture, await realpath(source)), 'Runtime dependency source escaped staging');
+    const existing = destinations.get(target);
+    if (existing) {
+      assert(
+        (await readFile(existing)).equals(await readFile(source)),
+        'Conflicting hoisted runtime dependency files',
+      );
+      continue;
+    }
     await mkdir(dirname(target), { recursive: true });
     await copyFile(source, target);
-    copied += 1;
+    destinations.set(target, source);
     bytes += stat.size;
   }
-}
 
-// Create aliases after copying files, so a host symlink can never redirect a
-// write outside dist. Real targets, including pnpm peer packages, stay local.
-for (const [alias, target] of links) {
-  assert(inside(runtimeModules, target), 'Package aliases must stay inside the runtime');
-  await lstat(target);
-  await mkdir(dirname(alias), { recursive: true });
-  await symlink(relative(dirname(alias), target), alias);
-}
-
-let optionalWarnings = 0;
-let resolvedWarnings = 0;
-for (const warning of trace.warnings) {
-  const dependency = warning.message.match(/^Failed to resolve dependency "([^"]+)"/)?.[1];
-  const importer = warning.message.match(/ loaded from (.+)$/)?.[1];
-  if (optionalDependencies.has(dependency)) {
-    optionalWarnings += 1;
-    continue;
+  let optionalWarnings = 0;
+  let resolvedWarnings = 0;
+  for (const warning of trace.warnings) {
+    const dependency = warning.message.match(/^Failed to resolve dependency "([^"]+)"/)?.[1];
+    const importer = warning.message.match(/ loaded from (.+)$/)?.[1];
+    if (optionalDependencies.has(dependency)) {
+      optionalWarnings += 1;
+      continue;
+    }
+    assert(dependency && importer, 'Unexpected dependency tracer warning');
+    const resolved = createRequire(destination(importer)).resolve(dependency);
+    assert(inside(runtimeModules, await realpath(resolved)), 'Resolved dependency escaped runtime');
+    resolvedWarnings += 1;
   }
-  assert(dependency && importer, 'Unexpected dependency tracer warning');
-  // NFT can warn about Nest's .ts.js fallback even when its actual .js module
-  // resolves. Require resolution must succeed in the packaged dependency tree.
-  const resolved = createRequire(destination(importer)).resolve(dependency);
-  assert(inside(runtimeModules, await realpath(resolved)), 'Resolved dependency escaped runtime');
-  resolvedWarnings += 1;
-}
 
-console.log(
-  `API runtime packaged: ${copied} dependency files, ${links.size} local aliases, ${(bytes / 1024 / 1024).toFixed(1)} MiB; ${optionalWarnings} optional and ${resolvedWarnings} resolved tracer warnings.`,
-);
+  console.log(
+    `API runtime packaged: ${destinations.size} regular dependency files, no aliases, ${(bytes / 1024 / 1024).toFixed(1)} MiB; ${optionalWarnings} optional and ${resolvedWarnings} resolved tracer warnings.`,
+  );
+} finally {
+  await rm(fixture, { recursive: true, force: true });
+}

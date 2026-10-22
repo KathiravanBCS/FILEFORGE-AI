@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { cp, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 async function checkRuntime(entrypoint) {
@@ -84,19 +84,14 @@ async function checkBuild() {
       recursive: true,
       verbatimSymlinks: true,
     });
-    async function checkLinks(folder) {
+    async function checkFiles(folder) {
       for (const entry of await readdir(folder, { withFileTypes: true })) {
         const filename = join(folder, entry.name);
-        if (entry.isSymbolicLink()) {
-          const target = relative(directory, await realpath(filename));
-          assert(
-            !isAbsolute(target) && target !== '..' && !target.startsWith(`..${sep}`),
-            'Runtime links must stay inside the deployable artifact',
-          );
-        } else if (entry.isDirectory()) await checkLinks(filename);
+        assert(!entry.isSymbolicLink(), 'Vercel Services output must not contain symbolic links');
+        if (entry.isDirectory()) await checkFiles(filename);
       }
     }
-    await checkLinks(directory);
+    await checkFiles(directory);
     await writeFile(join(directory, 'package.json'), '{"type":"commonjs"}\n');
     const code = await new Promise((resolve, reject) => {
       const child = spawn(
