@@ -11,6 +11,10 @@ Set `BETTER_AUTH_SECRET` to at least 32 cryptographically random characters in s
 environment settings. The application refuses an absent or short secret. Set
 `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` to the web origin. HTTPS and secure cookies are
 required in production. Development uses `http://localhost:3000` and the API at port 4000.
+The shared auth configuration selects secure cookies for every HTTPS canonical origin,
+even when a service's runtime does not set `NODE_ENV`. Next.js and the API must read
+the same `__Secure-better-auth.session_token`; neither accepts an unsigned token or a
+session absent from the database. HTTP local development keeps its non-secure cookie.
 `DATABASE_URL` must be the Neon pooled URL; `DIRECT_URL` is used for migrations when
 present. Runtime connections use the Prisma PostgreSQL driver adapter with a bounded pool.
 

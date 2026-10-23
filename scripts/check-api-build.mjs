@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHmac, randomBytes } from 'node:crypto';
 import { cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,64 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 async function checkRuntime(entrypoint) {
+  // Exercise the real compiled Better Auth verifier against a database fixture.
+  // No production database, session, password or provider credentials are used.
+  const token = 'compiled-session-fixture';
+  const now = new Date();
+  const user = {
+    id: 'compiled-user',
+    name: 'Compiled check',
+    email: 'compiled@example.test',
+    emailVerified: true,
+    image: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  let sessionReads = 0;
+  globalThis.fileforgeDatabase = {
+    session: {
+      findFirst: async ({ where }) => {
+        sessionReads++;
+        return (where.token?.equals ?? where.token) === token
+          ? {
+              id: 'compiled-session',
+              token,
+              userId: user.id,
+              user,
+              createdAt: now,
+              updatedAt: now,
+              expiresAt: new Date(now.getTime() + 7 * 86400_000),
+            }
+          : null;
+      },
+    },
+    user: { findFirst: async () => user },
+    member: {
+      findMany: async ({ where }) => {
+        assert.equal(where.userId, user.id, 'Workspace reads must use the verified user');
+        return [
+          {
+            role: 'owner',
+            organization: {
+              id: 'compiled-workspace',
+              name: 'Compiled workspace',
+              slug: 'compiled',
+            },
+          },
+        ];
+      },
+    },
+    userPreferences: {
+      findUnique: async ({ where }) => {
+        assert.equal(where.userId, user.id, 'Preference reads must use the verified user');
+        return null;
+      },
+    },
+  };
+  const signedCookie = (value, secret = process.env.BETTER_AUTH_SECRET) => {
+    const signature = createHmac('sha256', secret).update(value).digest('base64');
+    return `__Secure-better-auth.session_token=${encodeURIComponent(`${value}.${signature}`)}`;
+  };
   const originalListen = http.Server.prototype.listen;
   let server;
   let found;
@@ -45,6 +104,29 @@ async function checkRuntime(entrypoint) {
       signal: AbortSignal.timeout(5000),
     });
     assert.equal(protectedResponse.status, 401, 'Anonymous workspace requests must return 401');
+    for (const [cookie, status] of [
+      [signedCookie(token), 200],
+      [signedCookie(token, 'incorrect-signing-secret-for-this-fixture'), 401],
+      [signedCookie('revoked-session-fixture'), 401],
+    ]) {
+      const response = await fetch(`${base}/api/v1/preferences`, {
+        headers: { cookie },
+        signal: AbortSignal.timeout(5000),
+      });
+      assert.equal(
+        response.status,
+        status,
+        'Compiled API must validate secure session signatures and stored sessions',
+      );
+      await response.arrayBuffer();
+    }
+    const authenticated = await fetch(`${base}/api/v1/workspaces`, {
+      headers: { cookie: signedCookie(token) },
+      signal: AbortSignal.timeout(5000),
+    });
+    assert.equal(authenticated.status, 200, 'A verified HTTPS session must load its workspaces');
+    assert.equal((await authenticated.json()).data[0]?.id, 'compiled-workspace');
+    assert(sessionReads >= 3, 'Authentication must validate sessions against the database');
     const csrf = await fetch(`${base}/api/v1/workspaces`, {
       method: 'POST',
       headers: { Origin: 'https://untrusted.example.com' },
@@ -82,7 +164,7 @@ async function checkRuntime(entrypoint) {
     }
     assert(throttled, 'The compiled rate limiter must reject excessive requests with 429');
     console.log(
-      'Compiled API smoke passed: health 200, anonymous workspace 401, CSRF 403, rate limit 429, Swagger HTML/JSON/CSS 200.',
+      `Compiled API smoke passed (NODE_ENV=${process.env.NODE_ENV ?? 'unset'}): authenticated preferences/workspaces 200, invalid/revoked sessions 401, health 200, anonymous workspace 401, CSRF 403, rate limit 429, Swagger HTML/JSON/CSS 200.`,
     );
   } finally {
     clearTimeout(timer);
@@ -111,35 +193,39 @@ async function checkBuild() {
     }
     await checkFiles(directory);
     await writeFile(join(directory, 'package.json'), '{"type":"commonjs"}\n');
-    const code = await new Promise((resolve, reject) => {
-      const child = spawn(
-        process.execPath,
-        [
-          '--no-experimental-strip-types',
-          '--no-experimental-require-module',
-          fileURLToPath(import.meta.url),
-          '--child',
-          join(directory, 'main.mjs'),
-        ],
-        {
-          cwd: directory,
-          env: {
-            PATH: process.env.PATH,
-            SystemRoot: process.env.SystemRoot,
-            NODE_ENV: 'production',
-            VERCEL: '1',
-            PORT: '45678',
-            NEXT_PUBLIC_APP_URL: 'https://fileforge.example.com',
-            BETTER_AUTH_URL: 'https://fileforge.example.com',
+    const authSecret = randomBytes(32).toString('hex');
+    for (const nodeEnv of ['production', undefined]) {
+      const code = await new Promise((resolve, reject) => {
+        const child = spawn(
+          process.execPath,
+          [
+            '--no-experimental-strip-types',
+            '--no-experimental-require-module',
+            fileURLToPath(import.meta.url),
+            '--child',
+            join(directory, 'main.mjs'),
+          ],
+          {
+            cwd: directory,
+            env: {
+              PATH: process.env.PATH,
+              SystemRoot: process.env.SystemRoot,
+              ...(nodeEnv ? { NODE_ENV: nodeEnv } : {}),
+              BETTER_AUTH_SECRET: authSecret,
+              VERCEL: '1',
+              PORT: '45678',
+              NEXT_PUBLIC_APP_URL: 'https://fileforge.example.com',
+              BETTER_AUTH_URL: 'https://fileforge.example.com',
+            },
+            stdio: 'inherit',
+            timeout: 30_000,
           },
-          stdio: 'inherit',
-          timeout: 30_000,
-        },
-      );
-      child.once('error', reject);
-      child.once('exit', resolve);
-    });
-    assert.equal(code, 0, 'Compiled API must start using native Node in an isolated package');
+        );
+        child.once('error', reject);
+        child.once('exit', resolve);
+      });
+      assert.equal(code, 0, 'Compiled API must start using native Node in an isolated package');
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

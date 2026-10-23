@@ -67,6 +67,9 @@ function createAuth() {
   const capabilities = authCapabilities();
   const { authUrl: appUrl, origin } = resolveApplicationOrigins(process.env);
   const production = process.env.NODE_ENV === 'production';
+  // Web builds and API runtimes can expose different NODE_ENV values. A shared
+  // canonical HTTPS origin must always select the same signed session cookie.
+  const secureCookies = production || new URL(origin).protocol === 'https:';
   return betterAuth({
     appName: 'FileForge AI',
     secret,
@@ -137,8 +140,8 @@ function createAuth() {
     },
     rateLimit: { enabled: true, window: 60, max: 30 },
     advanced: {
-      useSecureCookies: production,
-      defaultCookieAttributes: { httpOnly: true, sameSite: 'lax', secure: production },
+      useSecureCookies: secureCookies,
+      defaultCookieAttributes: { httpOnly: true, sameSite: 'lax', secure: secureCookies },
       database: { generateId: () => randomUUID() },
     },
     databaseHooks: {
