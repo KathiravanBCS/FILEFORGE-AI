@@ -60,6 +60,16 @@ Vercel Functions accept at most 4.5 MB per request/response. The app preserves *
 
 Configure bucket CORS with your exact deployed and local origins:
 
+For `https://fileforge-ai-two.vercel.app`, the ready-to-paste production policy is
+[`deploy/r2-cors.production.json`](../deploy/r2-cors.production.json). In Cloudflare,
+open **R2 Object Storage → file-processing → Settings → CORS Policy**, add or edit
+the policy, paste that JSON array and save. This is a bucket setting; adding it to
+Vercel environment variables does not configure R2. Object read/write credentials
+may not have permission to edit bucket settings. Use the Cloudflare dashboard when
+the S3 CORS API returns `AccessDenied`.
+
+For other deployments, replace the example origins below with their exact origins:
+
 ```json
 [
   {
@@ -72,6 +82,14 @@ Configure bucket CORS with your exact deployed and local origins:
 ```
 
 Keep the bucket private. Add GET/HEAD CORS methods only if needed by a signed-image preview consumer. Configure a lifecycle rule to delete **`quarantine/` objects after one day**. A signed PUT can be reused until expiry, even after completion deletes its staged object; lifecycle cleanup bounds abandoned objects. Do not apply this short lifetime to final `workspaces/` keys. Administrative worker cleanup also removes expired staging objects; schedule tenant-authorized cleanup for final file/export retention. CORS and lifecycle are external settings, not applied by `vercel.json`. Signed URLs are bearer credentials and must not be logged.
+
+After saving CORS, start a fresh upload from the scanner so it receives a new
+five-minute URL. A failed browser PUT leaves a pending reservation, not a completed
+image; pending rows cannot be downloaded. Verify the browser's OPTIONS request
+returns a successful status and `Access-Control-Allow-Origin` matching the app's
+origin, then confirm PUT succeeds before completion and scan submission. The R2
+error `CORS not configured for this bucket` identifies the missing bucket policy;
+changing image size, session settings or the API route does not resolve it.
 
 ## Build, migrate and release
 

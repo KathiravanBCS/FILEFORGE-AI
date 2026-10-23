@@ -53,6 +53,30 @@ describe('direct private R2 browser uploads', () => {
     await expect(uploadBusinessCard(file())).rejects.toThrow('image upload failed (403)');
     expect(apiMock).toHaveBeenCalledTimes(1);
   });
+  it('turns a browser-blocked R2 PUT into safe connection/access guidance without completing the pending reservation', async () => {
+    apiMock.mockResolvedValueOnce(signed);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockRejectedValue(new TypeError(`Failed to fetch ${signed.upload.url}`)),
+    );
+    let failure: unknown;
+    try {
+      await uploadBusinessCard(file());
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    const message = (failure as Error).message;
+    expect(message).toContain('Check your connection and retry');
+    expect(message).toContain('administrator to check upload access');
+    expect(message).not.toContain(signed.upload.url);
+    expect(message).not.toContain('signature=');
+    expect((failure as Error).cause).toBeUndefined();
+    expect(apiMock).toHaveBeenCalledTimes(1);
+    expect(apiMock).not.toHaveBeenCalledWith(`/files/${id}/complete`, expect.anything());
+  });
   it('does not treat an uploaded but unverified file as successful', async () => {
     apiMock
       .mockResolvedValueOnce(signed)

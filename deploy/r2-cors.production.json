@@ -1,0 +1,8 @@
+[
+  {
+    "AllowedOrigins": ["https://fileforge-ai-two.vercel.app"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "MaxAgeSeconds": 300
+  }
+]

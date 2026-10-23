@@ -15,6 +15,7 @@ import {
   IconHistory,
 } from '@tabler/icons-react';
 import { api, errorMessage, formatDate } from '../lib/api';
+import { fileAvailability } from '../lib/file-availability';
 import { useWorkspace } from '../stores/workspace';
 import { EmptyState, ErrorState, LoadingState, PageHeader } from '../components/page-parts';
 interface Resource {
@@ -82,7 +83,9 @@ export function ResourcePage({ kind }: { kind: keyof typeof configs }) {
         ? 4000
         : false,
   });
-  async function download(id: string) {
+  async function download(record: Resource) {
+    if (kind === 'files' && !fileAvailability(record.status).canDownload) return;
+    const id = record.id;
     setBusy(id);
     try {
       const { url } = await api<{ url: string }>(`/${kind}/${id}/download`);
@@ -195,7 +198,9 @@ export function ResourcePage({ kind }: { kind: keyof typeof configs }) {
                 </Table.Thead>
                 <Table.Tbody>
                   {q.data.data.map((record) => {
-                    const status = record.job?.status || record.status || 'stored';
+                    const availability =
+                      kind === 'files' ? fileAvailability(record.status) : undefined;
+                    const status = record.job?.status || record.status || 'unknown';
                     return (
                       <Table.Tr key={record.id}>
                         <Table.Td>
@@ -208,6 +213,17 @@ export function ResourcePage({ kind }: { kind: keyof typeof configs }) {
                                 `${record.type || 'Scan'} · ${record.id.slice(0, 8)}`}
                             </Text>
                           </Group>
+                          {availability?.description && (
+                            <Text
+                              id={`file-availability-${record.id}`}
+                              size="10px"
+                              c="dimmed"
+                              mt={5}
+                              maw={320}
+                            >
+                              {availability.description}
+                            </Text>
+                          )}
                           {(record.error || record.job?.error) && (
                             <Text size="10px" c="red" mt={5} maw={300}>
                               {record.error || record.job?.error}
@@ -219,16 +235,17 @@ export function ResourcePage({ kind }: { kind: keyof typeof configs }) {
                             variant="light"
                             size="xs"
                             color={
-                              ['failed'].includes(status)
+                              availability?.color ||
+                              (['failed'].includes(status)
                                 ? 'red'
                                 : ['completed', 'stored'].includes(status)
                                   ? 'teal'
                                   : status === 'review'
                                     ? 'orange'
-                                    : 'blue'
+                                    : 'blue')
                             }
                           >
-                            {status}
+                            {availability?.label || status}
                           </Badge>
                         </Table.Td>
                         <Table.Td>
@@ -282,9 +299,18 @@ export function ResourcePage({ kind }: { kind: keyof typeof configs }) {
                               variant="subtle"
                               size="xs"
                               leftSection={<IconDownload size={14} />}
-                              disabled={kind === 'exports' && status !== 'completed'}
+                              disabled={
+                                kind === 'files'
+                                  ? !availability?.canDownload
+                                  : status !== 'completed'
+                              }
+                              aria-describedby={
+                                availability?.description
+                                  ? `file-availability-${record.id}`
+                                  : undefined
+                              }
                               loading={busy === record.id}
-                              onClick={() => void download(record.id)}
+                              onClick={() => void download(record)}
                             >
                               Download
                             </Button>

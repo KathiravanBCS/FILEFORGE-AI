@@ -42,14 +42,23 @@ export async function uploadBusinessCard(file: File): Promise<{ id: string }> {
   ) {
     throw new Error('The upload service returned an invalid destination.');
   }
-  const uploaded = await fetch(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type },
-    body: file,
-    credentials: 'omit',
-    redirect: 'error',
-    mode: 'cors',
-  });
+  let uploaded: Response;
+  try {
+    uploaded = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+      credentials: 'omit',
+      redirect: 'error',
+      mode: 'cors',
+    });
+  } catch {
+    // Browsers intentionally hide whether cross-origin fetch failed due to CORS or connectivity.
+    // Do not expose the signed upload URL or preserve an exception containing its query string.
+    throw new Error(
+      'Your browser could not upload the image to private storage. Check your connection and retry. If it continues, ask your administrator to check upload access for this website.',
+    );
+  }
   if (!uploaded.ok) {
     throw new Error(`The image upload failed (${uploaded.status}). Please try again.`);
   }
