@@ -28,7 +28,45 @@ pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter @fileforge/w
 pnpm --filter @fileforge/worker start
 ```
 
-Configure the worker host's database, R2, Redis, Groq, concurrency, retention and optional token-price variables from `.env.example`. It does not need signing/OAuth/email secrets. Start with one instance and concurrency two. Allow shutdown time for the 60-second provider timeout and retries. Monitor queue errors and Upstash quotas. Deploy compatible schema/API/worker releases together. Use separate databases, buckets and Redis instances for preview and production; workers sharing a queue can consume each other's jobs.
+Configure the worker host's database, R2, Redis, Groq, concurrency, retention and optional token-price variables from `.env.example`. It does not need signing/OAuth/email secrets. Start with one instance and concurrency one, then increase concurrency after observing provider quotas and resource usage. Allow shutdown time for the 60-second provider timeout and retries. Monitor queue errors and Upstash quotas. Deploy compatible schema/API/worker releases together. Use separate databases, buckets and Redis instances for preview and production; workers sharing a queue can consume each other's jobs.
+
+### Deploy the worker on Render
+
+The root [`render.yaml`](../render.yaml) prepares one native Node background worker
+without changing the Vercel services. It starts with one instance and concurrency
+one. Importing this file can create a billable Render service; review the selected
+worker plan in Render before creating it. No Render service is provisioned by a
+GitHub push alone.
+
+1. In Render, select **New → Blueprint**, connect `KathiravanBCS/FILEFORGE-AI`,
+   choose `main` and keep the repository root and `render.yaml` blueprint path.
+2. Supply the prompted server variables. Enter the same `DATABASE_URL`, `REDIS_URL`
+   and R2 values used by the Vercel project so both processes use the same resources.
+   Retrieve those values from Neon, Upstash and Cloudflare if you do not have a copy.
+   Supply `GROQ_API_KEY` and the configured, available `GROQ_VISION_MODEL` from
+   your Groq account. [`deploy/worker.env.example`](../deploy/worker.env.example)
+   lists the required values without credentials. The worker does not need
+   `BETTER_AUTH_SECRET`, auth URLs, OAuth or Resend values.
+3. Review the worker plan and create the service. The blueprint installs the
+   pinned pnpm version, generates Prisma and builds the worker; its start command
+   is `node apps/worker/dist/main.js` from the repository root. Do not set a root
+   directory of `apps/worker` or add an HTTP health-check path to this worker.
+4. Check Render logs for **“FileForge worker connected; TLS queue is ready”**.
+   Existing waiting jobs can then be claimed; the scan moves from queued/0% to
+   processing before inference. It should reach review when extraction succeeds.
+   A startup, Redis or Groq error needs its own diagnosis; do not keep uploading
+   the same image to create more queued jobs.
+
+If using another host, apply the same build/start commands and environment values
+there. A worker on a laptop runs only while that process and computer stay on.
+
+**Queued at 0% for a long time:** deploying only the Vercel web and API does not
+start `apps/worker`. Successful upload and queue insertion are independent of
+worker availability. API readiness does not check for a connected worker. If a
+worker is already deployed, verify its startup log and that its `REDIS_URL` and
+`DATABASE_URL` match the API; inspect queue pause/failed states and provider logs
+before retrying. Existing waiting jobs normally need no new upload after a worker
+connects.
 
 ## Environment variables
 

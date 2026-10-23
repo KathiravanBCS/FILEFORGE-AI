@@ -1,0 +1,40 @@
+services:
+  - type: worker
+    name: fileforge-worker
+    runtime: node
+    numInstances: 1
+    buildCommand: >-
+      npx --yes pnpm@11.25.0 install --frozen-lockfile --prod=false &&
+      npx --yes pnpm@11.25.0 db:generate &&
+      npx --yes pnpm@11.25.0 --filter @fileforge/worker build
+    startCommand: node apps/worker/dist/main.js
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: NODE_VERSION
+        value: '24'
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: r2
+      - key: S3_BUCKET
+        value: file-processing
+      - key: S3_REGION
+        value: auto
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_VISION_MODEL
+        sync: false
+      - key: WORKER_CONCURRENCY
+        value: '1'
+      - key: FILE_RETENTION_DAYS
+        value: '30'
